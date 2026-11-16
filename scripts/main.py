@@ -17,7 +17,7 @@ sleep_time: float = 0.05
 data_to_send: bytes = b''
 
 # Length of messages sent from the Arduino board.
-read_msg_length: int = 10
+read_msg_length: int = 8
 
 
 def process() -> None:
