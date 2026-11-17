@@ -78,9 +78,9 @@ class DeviceData:
 # to notify the Arduino board of the state change.
 # The message is an integer representing the state as follows:
 # IDLE, ECHOING, APPROACHED = State 0, 1, 2, respectively.
-# WARNING = State 2, 3, ... depending on the number of strikes.
-#           (number of strikes + 1)
-#           (State 2 corresponds to 1 strike; 3 corresponds to 2 strikes; etc.)
+# WARNING = State 3, 4, ... depending on the number of strikes.
+#           (number of strikes + 2)
+#           (State 3 corresponds to 1 strike; 4 corresponds to 2 strikes; etc.)
 def send_state_change_data() -> None:
     global data_to_send
     new_state: int
@@ -95,7 +95,7 @@ def send_state_change_data() -> None:
             new_state = 2
             pass
         case DeviceState.WARNING:
-            new_state = 2 + DeviceData.warning_strike_count - 1
+            new_state = 2 + DeviceData.warning_strike_count
             pass
     data_to_send = bytes(new_state)
     pass
