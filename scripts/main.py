@@ -6,6 +6,9 @@ from pathlib import Path
 from transcription import Transcriber
 from profanity_filter import filter
 
+import sounddevice as sd
+import soundfile as sf
+
 
 # Depends on the port you plug the Arduino into.
 port_name: str = input("Arduino connection Serial Port name: ")
@@ -96,6 +99,69 @@ class DeviceData:
 
 
 
+warning_audio_filepaths: list[str] = [
+    "warning_1.mp3",
+    "warning_2.mp3",
+    "warning_3.mp3",
+]
+approached_audio_filepath: str = "approached.mp3"
+
+
+# Global static class wrapper for playing audio from files and stopping them.
+# Code from: https://github.com/spatialaudio/python-sounddevice/blob/master/examples/play_file.py
+class DeviceAudioFilePlayer:
+    data: sf.AudioData
+
+    current_frame = 0
+
+    @staticmethod
+    def callback(outdata, frames, time, status) -> None:
+        if status:
+            print(status)
+            pass
+        chunksize = min(len(DeviceAudioFilePlayer.data) - DeviceAudioFilePlayer.current_frame, frames)
+        outdata[:chunksize] = DeviceAudioFilePlayer.data[
+            DeviceAudioFilePlayer.current_frame:DeviceAudioFilePlayer.current_frame + chunksize
+        ]
+        if chunksize < frames:
+            outdata[chunksize:] = 0
+            raise sd.CallbackStop()
+        DeviceAudioFilePlayer.current_frame += chunksize
+        pass
+
+    @staticmethod
+    def onfinished_callback() -> None:
+        if DeviceData.audio_request_state == AudioRequestState.AUDIO_PLAYING:
+            DeviceData.audio_request_state = AudioRequestState.AUDIO_FINISHED
+            pass
+        pass
+
+    stream: sd.OutputStream
+
+    @staticmethod
+    def play(audio_filepath) -> None:
+        DeviceAudioFilePlayer.data, samplerate = sf.read(audio_filepath, always_2d=True)
+        DeviceAudioFilePlayer.stream = sd.OutputStream(
+            samplerate=samplerate, channels=DeviceAudioFilePlayer.data.shape[1],
+            callback=DeviceAudioFilePlayer.callback,
+            finished_callback=DeviceAudioFilePlayer.onfinished_callback
+        )
+        DeviceAudioFilePlayer.stream.start()
+        pass
+
+    @staticmethod
+    def stop() -> None:
+        DeviceAudioFilePlayer.stream.stop()
+        pass
+
+
+
+
+
+
+
+
+
 # Helper method to send data to the Arduino board
 # when a state-deciding variable is changed
 # to notify the Arduino board of the state change.
@@ -137,12 +203,23 @@ def process_arduino_state_update() -> None:
     pass
 
 def play_warning_audio() -> None:
-    # To-do: Insert code to play warning audio based on strike count.
-    # The warning audio should have a callback to set the DeviceData.audio_request_state appropriately.
+    # Play audio based on the number of warning strikes recorded.
     DeviceData.audio_request_state = AudioRequestState.AUDIO_PLAYING
+    DeviceAudioFilePlayer.play(
+        warning_audio_filepaths[max(DeviceData.warning_strike_count - 1, 0)]
+    )
     pass
 
+def stop_warning_audio() -> None:
+    # Pre-maturely stop the warning audio, if needed.
+    DeviceAudioFilePlayer.stop()
+    pass
+
+
 def play_approached_audio() -> None:
+    # Play approached audio.
+    DeviceData.audio_request_state = AudioRequestState.AUDIO_PLAYING
+    DeviceAudioFilePlayer.play(approached_audio_filepath)
     pass
 
 def start_echoing() -> None:
@@ -185,6 +262,10 @@ def process_state_idle(delta: float) -> None:
 def process_warning_state(delta: float) -> None:
     if DeviceData.is_approached:
         # Transition to APPROACHED state.
+        if DeviceData.audio_request_state == AudioRequestState.AUDIO_PLAYING:
+            # Pre-maturely stop the currently playing warning audio.
+            stop_warning_audio()
+            pass
         DeviceData.prev_state = DeviceState.WARNING
         DeviceData.current_state = DeviceState.APPROACHED
         DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
