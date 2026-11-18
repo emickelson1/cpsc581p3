@@ -49,9 +49,6 @@ max_strike_count: int = 3
 # The amount of time (in seconds) to calm down after being approached.
 calming_down_time: float = 30
 
-# The amount of time to echo what the device hears to cause disruption.
-echoing_time: float = 300
-
 
 # The distance (in metres) from the ultrasonic sensor to the nearest object
 # that will prompt the device to transition into the APPROACHED state.
@@ -69,7 +66,7 @@ class AudioRequestState(enum.Enum):
 class DeviceState(enum.Enum):
     IDLE = 0
     WARNING = 1
-    ECHOING = 2
+    PUNISHMENT = 2
     APPROACHED = 3
 
 # A class containing static global data.
@@ -99,12 +96,19 @@ class DeviceData:
 
 
 
-warning_audio_filepaths: list[str] = [
-    "warning_1.mp3",
-    "warning_2.mp3",
-    "warning_3.mp3",
+profanity_warning_audio_filepaths: list[str] = [
+    "profanity_warning_1.mp3",
+    "profanity_warning_2.mp3",
+    "profanity_warning_3.mp3",
+]
+politics_warning_audio_filepaths: list[str] = [
+    "politics_warning_1.mp3",
+    "politics_warning_2.mp3",
+    "politics_warning_3.mp3",
 ]
 approached_audio_filepath: str = "approached.mp3"
+
+punishment_audio_filepath: str = "punishment.mp3"
 
 
 # Global static class wrapper for playing audio from files and stopping them.
@@ -177,7 +181,7 @@ def send_state_change_data() -> None:
         case DeviceState.IDLE:
             new_state = 0
             pass
-        case DeviceState.ECHOING:
+        case DeviceState.PUNISHMENT:
             new_state = 1
             pass
         case DeviceState.APPROACHED:
@@ -205,9 +209,16 @@ def process_arduino_state_update() -> None:
 def play_warning_audio() -> None:
     # Play audio based on the number of warning strikes recorded.
     DeviceData.audio_request_state = AudioRequestState.AUDIO_PLAYING
-    DeviceAudioFilePlayer.play(
-        warning_audio_filepaths[max(DeviceData.warning_strike_count - 1, 0)]
-    )
+    if DeviceData.has_detected_profanity:
+        DeviceAudioFilePlayer.play(
+            profanity_warning_audio_filepaths[max(DeviceData.warning_strike_count - 1, 0)]
+        )
+        pass
+    else:
+        DeviceAudioFilePlayer.play(
+            politics_warning_audio_filepaths[max(DeviceData.warning_strike_count - 1, 0)]
+        )
+        pass
     pass
 
 def stop_warning_audio() -> None:
@@ -222,15 +233,15 @@ def play_approached_audio() -> None:
     DeviceAudioFilePlayer.play(approached_audio_filepath)
     pass
 
-def start_echoing() -> None:
-    # To-do: Insert code to begin echoing audio in the room at a delay.
-    # This echoing audio should play indefinitely until stop_echoing() is called.
+def play_punishment_audio() -> None:
+    # Play punishment audio.
     DeviceData.audio_request_state = AudioRequestState.AUDIO_PLAYING
+    DeviceAudioFilePlayer.play(punishment_audio_filepath)
     pass
 
-def stop_echoing() -> None:
-    # To-do: Insert code to stop echoing audio in the room (the process started by start_echoing()).
-    DeviceData.audio_request_state = AudioRequestState.AUDIO_FINISHED
+def stop_punishment_audio() -> None:
+    # Pre-maturely stop the warning audio, if needed.
+    DeviceAudioFilePlayer.stop()
     pass
 
 
@@ -289,7 +300,7 @@ def process_warning_state(delta: float) -> None:
         # If enough strikes have been accumulated, switch to ECHOING state.
         if DeviceData.warning_strike_count > max_strike_count:
             DeviceData.prev_state = DeviceState.WARNING
-            DeviceData.current_state = DeviceState.ECHOING
+            DeviceData.current_state = DeviceState.PUNISHMENT
             # Request echoing audio.
             DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
             # Reset strike count.
@@ -318,10 +329,14 @@ def process_warning_state(delta: float) -> None:
         return
 
 
-def process_echoing_state(delta: float) -> None:
+def process_punishment_state(delta: float) -> None:
     if DeviceData.is_approached:
         # Transition to APPROACHED state.
-        DeviceData.prev_state = DeviceState.ECHOING
+        if DeviceData.audio_request_state == AudioRequestState.AUDIO_PLAYING:
+            # Pre-maturely stop the currently playing punishment audio.
+            stop_punishment_audio()
+            pass
+        DeviceData.prev_state = DeviceState.PUNISHMENT
         DeviceData.current_state = DeviceState.APPROACHED
         DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
         DeviceData.state_timer = 0
@@ -329,24 +344,21 @@ def process_echoing_state(delta: float) -> None:
         send_state_change_data()
         return
 
-    if DeviceData.audio_request_state == AudioRequestState.AUDIO_REQUESTED:
-        start_echoing()
-        pass
+    match DeviceData.audio_request_state:
+        case AudioRequestState.AUDIO_REQUESTED:
+            play_punishment_audio()
+            # No profanity detection or decay while audio is playing.
+            return
+        case AudioRequestState.AUDIO_PLAYING:
+            # No profanity detection or decay while audio is playing.
+            return
 
-    # Keep echoing until the time is up.
-    if DeviceData.state_timer >= echoing_time:
-        # Stop and transition back to IDLE state.
-        stop_echoing()
-        DeviceData.prev_state = DeviceState.ECHOING
-        DeviceData.current_state = DeviceState.IDLE
-        DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
-        DeviceData.state_timer = 0
-        
-        send_state_change_data()
-        pass
-    else:
-        DeviceData.state_timer += delta
-        pass
+    # Transition to the IDLE state.
+    # If the device got interrupted, transition back to the IDLE state
+    # without replaying the audio.
+    DeviceData.prev_state = DeviceState.PUNISHMENT
+    DeviceData.current_state = DeviceState.IDLE
+    DeviceData.state_timer = 0
     pass
 
 
@@ -377,11 +389,6 @@ def process_approached_state(delta: float) -> None:
         # Transition back to the previous state.
         DeviceData.current_state = DeviceData.prev_state
         DeviceData.prev_state = DeviceState.APPROACHED
-
-        # If the device went back to the ECHOING state, tell it to start echoing again.
-        if DeviceData.current_state == DeviceState.ECHOING:
-            DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
-            pass
         DeviceData.state_timer = 0
         
         send_state_change_data()
@@ -401,8 +408,8 @@ def process(delta: float) -> None:
         case DeviceState.WARNING:
             process_warning_state(delta)
             pass
-        case DeviceState.ECHOING:
-            process_echoing_state(delta)
+        case DeviceState.PUNISHMENT:
+            process_punishment_state(delta)
             pass
         case DeviceState.APPROACHED:
             process_approached_state(delta)
