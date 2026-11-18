@@ -90,6 +90,8 @@ class DeviceData:
     has_detected_profanity: bool = False
 
     is_approached: bool = False
+
+    is_paused: bool = False
     pass
 
 
@@ -126,9 +128,11 @@ def send_state_change_data() -> None:
 
 
 # Plug method to implement.
-def update_is_approached() -> None:
+def process_arduino_state_update() -> None:
     if len(read_msg) > 0:
-        DeviceData.is_approached =  bool.from_bytes(read_msg)
+        msg: int = int.from_bytes(read_msg)
+        DeviceData.is_approached =  bool(msg & 0x0F)
+        DeviceData.is_paused =  bool(msg & 0xF0)
         pass
     pass
 
@@ -333,7 +337,7 @@ transcriber.start()
 # The loop blocks until the data_to_send message is fully sent to the Arduino circuit.
 with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as serial_port:
     # Send the distance threshold to the Arduino circuit.
-    serial_port.write(str(approached_distance_threshold).encode("utf-8"))
+    serial_port.write((str(approached_distance_threshold) + '\n').encode("utf-8"))
     while True:
         current_time: float = time.process_time()
         delta: float = max(current_time - prev_time, 0)
@@ -348,7 +352,9 @@ with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as seria
             # Get a single line from the transcriber.
             kind, text = transcriber.events.get_nowait()
             if kind == 'partial': pass      # wait for complete sentence
-            else:
+
+            # Only do processing on the text if the device is not paused.
+            elif not DeviceData.is_paused:
                 # Run the profanity/political filter on it.
                 filtered, reason = filter(text)
                 if filtered and reason == "profanity":
@@ -379,10 +385,13 @@ with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as seria
                 partial_msg = b''
                 pass
             pass
-        # Update is_approached flag.
-        update_is_approached()
+        # Update the is_approached and is_paused flags
+        # based on message from the Arduino board.
+        process_arduino_state_update()
 
-        process(delta)
+        if not DeviceData.is_paused:
+            process(delta)
+            pass
 
         # Write data, if any.
         if len(data_to_send) > 0:
