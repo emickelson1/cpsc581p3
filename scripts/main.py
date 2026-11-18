@@ -75,6 +75,10 @@ class DeviceData:
     # how long the device has stayed in a state for.
     state_timer: float = 0
 
+    has_detected_politics: bool = False
+    has_detected_profanity: bool = False
+    pass
+
 
 
 # Helper method to send data to the Arduino board
@@ -105,18 +109,9 @@ def send_state_change_data() -> None:
     pass
 
 
-
 # Plug method to implement.
 def is_approached() -> bool:
     # To-do: Insert code to check if the device was approached.
-    return False
-
-def has_detected_profanity() -> bool:
-    # To-do: Insert code to check for profanity being detected.
-    return False
-
-def has_detected_politics() -> bool:
-    # To-do: Insert code to check for politics being detected.
     return False
 
 def play_warning_audio() -> None:
@@ -154,8 +149,7 @@ def process_state_idle(delta: float) -> None:
         send_state_change_data()
         return
 
-    profanity_detected: bool = has_detected_profanity()
-    if profanity_detected:
+    if DeviceData.has_detected_profanity or DeviceData.has_detected_politics:
         # Transition to WWARNING_1 state.
         DeviceData.prev_state = DeviceState.IDLE
         DeviceData.current_state = DeviceState.WARNING
@@ -187,8 +181,7 @@ def process_warning_state(delta: float) -> None:
             # No profanity detection or decay while audio is playing.
             return
 
-    profanity_detected: bool = has_detected_profanity()
-    if profanity_detected:
+    if DeviceData.has_detected_profanity or DeviceData.has_detected_politics:
         # Increase strike count and reset decay timer.
         DeviceData.warning_strike_count += 1
         DeviceData.state_timer = 0
@@ -320,25 +313,37 @@ transcriber.start()
 with serial.Serial(port_name, baud_rate, timeout=None) as serial_port:
     while True:
         current_time: float = time.process_time()
-        process(max(current_time - prev_time, 0))
+        delta: float = max(current_time - prev_time, 0)
         prev_time = current_time
+
+        # Reset flags.
+        DeviceData.has_detected_profanity = False
+        DeviceData.has_detected_politics = False
         
         # Query transcriber for new complete sentences.
         try:
             # Get a single line from the transcriber.
             kind, text = transcriber.events.get_nowait()
             if kind == 'partial': pass      # wait for complete sentence
-        
-            # Run the profanity/political filter on it.
-            filtered, reason = filter(text)
-            if filtered and reason == "profanity": has_detected_profanity()
-            if filtered and reason == "politics" : has_detected_politics()
+            else:
+                # Run the profanity/political filter on it.
+                filtered, reason = filter(text)
+                if filtered and reason == "profanity":
+                    DeviceData.has_detected_profanity = True
+                    pass
+                if filtered and reason == "politics":
+                    DeviceData.has_detected_politics = True
+                    pass
+                pass
+            pass
         except queue.Empty: pass
 
         # Read data. Block until the entire message is read.
         # This means that the Arduino board should send data every frame.
         read_msg = b''
         read_msg = serial_port.read(read_msg_length)
+
+        process(delta)
 
         # Write data, if any.
         if len(data_to_send) > 0:
