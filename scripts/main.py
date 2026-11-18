@@ -455,24 +455,30 @@ with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as seria
         # Read data.
         # Reset the latest read message (read_msg).
         read_msg = b''
-        # Keep reading the data until
-        # all messages sent by the Arduino circuit have been read.
-        # Store the latest full message into read_msg.
-        while True:
-            # Read until partial_msg has a full message, or until we get a timeout.
-            partial_msg += serial_port.read(read_msg_length - len(partial_msg))
-            # If we did not get a full message, do nothing.
-            if len(partial_msg) < read_msg_length:
-                break
-            # Otherwise, set the read_msg to that full message.
-            else:
-                read_msg = partial_msg
-                partial_msg = b''
+        # Only read if there is data.
+        if serial_port.in_waiting > 0:
+            # Read all messages sent by the Arduino circuit.
+            # Store the latest full message into read_msg.
+            has_full_msg: bool = serial_port.in_waiting >= read_msg_length - len(partial_msg)
+            partial_msg += serial_port.read_all()
+            if has_full_msg:
+                # The offset of the final message is the number of full messages - 1,
+                # altogether multiplied by the length of full messages.
+                latest_full_msg_offset: int = (
+                    len(partial_msg) // read_msg_length - 1
+                ) * read_msg_length
+                # Splice the full message.
+                read_msg = partial_msg[
+                    latest_full_msg_offset :
+                    latest_full_msg_offset + read_msg_length
+                ]
+                # Splice the remainder.
+                partial_msg = partial_msg[latest_full_msg_offset + read_msg_length:]
                 pass
+            # Update the is_approached and is_paused flags
+            # based on message from the Arduino board.
+            process_arduino_state_update()
             pass
-        # Update the is_approached and is_paused flags
-        # based on message from the Arduino board.
-        process_arduino_state_update()
 
         if not DeviceData.is_paused:
             process(delta)
