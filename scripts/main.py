@@ -41,13 +41,13 @@ prev_time: float = time.process_time()
 
 
 # The amount of time (in seconds) to decay 1 warning level.
-warning_decay_time: float = 60
+warning_decay_time: float = 10
 
 # The maximum number of strikes that will prompt the ECHOING state.
 max_strike_count: int = 3
 
 # The amount of time (in seconds) to calm down after being approached.
-calming_down_time: float = 30
+calming_down_time: float = 10
 
 
 # The distance (in metres) from the ultrasonic sensor to the nearest object
@@ -102,11 +102,6 @@ profanity_audio_filepath:  str = get_sound_path("profanity.mp3")
 politics_audio_filepath:   str = get_sound_path("politics.mp3")
 approached_audio_filepath: str = get_sound_path("approached.mp3")
 punishment_audio_filepath: str = get_sound_path("punishment.mp3")
-warning_audio_filepaths: list[str] = [
-    get_sound_path("warning_1.mp3"),
-    get_sound_path("warning_2.mp3"),
-    get_sound_path("warning_3.mp3"),
-]
 
 
 # Global static class wrapper for playing audio from files and stopping them.
@@ -148,6 +143,7 @@ class DeviceAudioFilePlayer:
             callback=DeviceAudioFilePlayer.callback,
             finished_callback=DeviceAudioFilePlayer.onfinished_callback
         )
+        DeviceAudioFilePlayer.current_frame = 0
         DeviceAudioFilePlayer.stream.start()
         pass
 
@@ -155,11 +151,6 @@ class DeviceAudioFilePlayer:
     def stop() -> None:
         DeviceAudioFilePlayer.stream.stop()
         pass
-
-
-
-
-
 
 
 
@@ -207,10 +198,7 @@ def process_arduino_state_update() -> None:
 def play_warning_audio() -> None:
     # Play audio based on the number of warning strikes recorded.
     DeviceData.audio_request_state = AudioRequestState.AUDIO_PLAYING
-    if DeviceData.warning_strike_count == 3:
-        DeviceAudioFilePlayer.play(punishment_audio_filepath)
-        pass
-    elif DeviceData.has_detected_profanity:
+    if DeviceData.has_detected_profanity:
         DeviceAudioFilePlayer.play(profanity_audio_filepath)
         pass
     else:
@@ -423,6 +411,7 @@ transcriber.start()
 with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as serial_port:
     # Send the distance threshold to the Arduino circuit.
     serial_port.write((str(approached_distance_threshold) + '\n').encode("utf-8"))
+    print("Connection Established; Distance Threshold Sent.")
     while True:
         current_time: float = time.process_time()
         delta: float = max(current_time - prev_time, 0)

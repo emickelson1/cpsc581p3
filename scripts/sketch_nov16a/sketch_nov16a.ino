@@ -15,7 +15,7 @@ void setup() {
   pinMode(ledPin2, OUTPUT);
   pinMode(ledPin3, OUTPUT);
   Serial.begin(19200);
-  while (!Serial.available());
+  //while (!Serial.available());
   distanceThreshold = Serial.readStringUntil('\n').toFloat();
 }
 
@@ -42,7 +42,7 @@ int getStage(float d) {
 
 // State change based on which strike we are on
 void onState(int s) {
-  int deviceState = s - 3;
+  s = s - 3;
   if (s == 0) {
     digitalWrite(ledPin1, HIGH);
   } else if (s == 1) {
