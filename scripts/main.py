@@ -1,6 +1,10 @@
 import serial
 import time
 import enum
+import queue
+from pathlib import Path
+from transcription import Transcriber
+from profanity_filter import filter
 
 
 # Depends on the port you plug the Arduino into.
@@ -109,6 +113,10 @@ def is_approached() -> bool:
 
 def has_detected_profanity() -> bool:
     # To-do: Insert code to check for profanity being detected.
+    return False
+
+def has_detected_politics() -> bool:
+    # To-do: Insert code to check for politics being detected.
     return False
 
 def play_warning_audio() -> None:
@@ -305,11 +313,27 @@ def process(delta: float) -> None:
     pass
 
 
+model = Path(__file__).resolve().parent.parent / "model"
+transcriber = Transcriber(model)
+transcriber.start()
+
 with serial.Serial(port_name, baud_rate, timeout=None) as serial_port:
     while True:
         current_time: float = time.process_time()
         process(max(current_time - prev_time, 0))
         prev_time = current_time
+        
+        # Query transcriber for new complete sentences.
+        try:
+            # Get a single line from the transcriber.
+            kind, text = transcriber.events.get_nowait()
+            if kind == 'partial': pass      # wait for complete sentence
+        
+            # Run the profanity/political filter on it.
+            filtered, reason = filter(text)
+            if filtered and reason == "profanity": has_detected_profanity()
+            if filtered and reason == "politics" : has_detected_politics()
+        except queue.Empty: pass
 
         # Read data. Block until the entire message is read.
         # This means that the Arduino board should send data every frame.
@@ -326,4 +350,5 @@ with serial.Serial(port_name, baud_rate, timeout=None) as serial_port:
         # the frame duration of the process with that of the Arduino board.
         time.sleep(sleep_time)
         pass
-    pass
+
+transcriber.stop()

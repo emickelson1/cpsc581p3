@@ -9,7 +9,7 @@ REPLACEMENTS = {
     '\'': ' '   # e.g. "O'Reilly"
 }
 
-def parse(csvpath: str) -> list[str]:
+def _parse(csvpath: str) -> list[str]:
     terms = set()
     with open(csvpath, 'r') as f:
         f.readline()
@@ -37,7 +37,7 @@ profanity.load_censor_words() # default profanity filter
 
 # political words
 political = Profanity()
-political.add_censor_words(parse(str(POLITICAL_CSV_PATH)))
+political.add_censor_words(_parse(str(POLITICAL_CSV_PATH)))
 
 
 def filter(input: str) -> tuple[bool, str]:
