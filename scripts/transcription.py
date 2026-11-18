@@ -3,11 +3,11 @@ import queue
 import threading
 
 import sounddevice as sd
-from vosk import KaldiRecognizer, Model
+from vosk import KaldiRecognizer, Model, SetLogLevel
 
 SAMPLERATE = 16000
 BLOCKSIZE = 4000
-
+SetLogLevel(-1)
 
 class Transcriber:
     def __init__(self, model_path):
