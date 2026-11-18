@@ -8,7 +8,7 @@ from profanity_filter import filter
 
 
 # Depends on the port you plug the Arduino into.
-port_name: str = ""
+port_name: str = input("Arduino connection Serial Port name: ")
 
 # Should be the same as the baud rate configured by the Arduino code.
 baud_rate: int = 19200
@@ -17,13 +17,19 @@ baud_rate: int = 19200
 sleep_time: float = 0.05
 
 
-# The buffer containing messages to send to the arduino circuit.
+# The buffer containing messages to send to the Arduino circuit.
 # The length of each message should be the same as the value specified in the code for the Arduino board.
 data_to_send: bytes = b''
 
-# Length of messages sent from the Arduino board.
-read_msg_length: int = 8
+# Length of messages sent from the Arduino circuit.
+read_msg_length: int = 1
 
+# Buffer containing the partial message being read.
+partial_msg: bytes = b''
+
+# Buffer containing the latest full message read from the Arduino circuit since the last process frame.
+# If the Arduino circuit has sent multiple full messages since the last read,
+# this will only store the latest full message.
 read_msg: bytes = b''
 
 # Store the time in the previous process frame.
@@ -42,6 +48,11 @@ calming_down_time: float = 30
 
 # The amount of time to echo what the device hears to cause disruption.
 echoing_time: float = 300
+
+
+# The distance (in metres) from the ultrasonic sensor to the nearest object
+# that will prompt the device to transition into the APPROACHED state.
+approached_distance_threshold: float = 0.1
 
 
 # States for whether or not the warning or pleading audio clips
@@ -77,6 +88,8 @@ class DeviceData:
 
     has_detected_politics: bool = False
     has_detected_profanity: bool = False
+
+    is_approached: bool = False
     pass
 
 
@@ -105,14 +118,19 @@ def send_state_change_data() -> None:
         case DeviceState.WARNING:
             new_state = 2 + DeviceData.warning_strike_count
             pass
-    data_to_send = bytes(new_state)
+    # Send the state number as a single byte.
+    # Assert that the new_state is representable as a single byte.
+    assert(0 <= new_state <= 255)
+    data_to_send = int.to_bytes(new_state)
     pass
 
 
 # Plug method to implement.
-def is_approached() -> bool:
-    # To-do: Insert code to check if the device was approached.
-    return False
+def update_is_approached() -> None:
+    if len(read_msg) > 0:
+        DeviceData.is_approached =  bool.from_bytes(read_msg)
+        pass
+    pass
 
 def play_warning_audio() -> None:
     # To-do: Insert code to play warning audio based on strike count.
@@ -138,8 +156,7 @@ def stop_echoing() -> None:
 
 
 def process_state_idle(delta: float) -> None:
-    approached: bool = is_approached()
-    if approached:
+    if DeviceData.is_approached:
         # Transition to APPROACHED state.
         DeviceData.prev_state = DeviceState.IDLE
         DeviceData.current_state = DeviceState.APPROACHED
@@ -162,8 +179,7 @@ def process_state_idle(delta: float) -> None:
 
 
 def process_warning_state(delta: float) -> None:
-    approached: bool = is_approached()
-    if approached:
+    if DeviceData.is_approached:
         # Transition to APPROACHED state.
         DeviceData.prev_state = DeviceState.WARNING
         DeviceData.current_state = DeviceState.APPROACHED
@@ -218,8 +234,7 @@ def process_warning_state(delta: float) -> None:
 
 
 def process_echoing_state(delta: float) -> None:
-    approached: bool = is_approached()
-    if approached:
+    if DeviceData.is_approached:
         # Transition to APPROACHED state.
         DeviceData.prev_state = DeviceState.ECHOING
         DeviceData.current_state = DeviceState.APPROACHED
@@ -260,12 +275,16 @@ def process_approached_state(delta: float) -> None:
             # No calming down while audio is playing.
             return
 
-    approached: bool = is_approached()
-    if approached:
-        # Play the audio again and restart the calming down timer.
-        DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
-        DeviceData.state_timer = 0
-        send_state_change_data()
+    if DeviceData.is_approached:
+        # If the device was approached again
+        # after it has been left alone for a bit to calm down.
+        if DeviceData.state_timer > 0:
+            # Play the audio again and restart the calming down timer.
+            DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
+            DeviceData.state_timer = 0
+            send_state_change_data()
+            pass
+        # Otherwise, simply do nothing and wait until it is left alone.
         return
 
     # Keep echoing until the time is up.
@@ -310,7 +329,11 @@ model = Path(__file__).resolve().parent.parent / "model"
 transcriber = Transcriber(model)
 transcriber.start()
 
-with serial.Serial(port_name, baud_rate, timeout=None) as serial_port:
+# The loop runs as often as possible, and never halts to wait for messages from the Arduino circuit.
+# The loop blocks until the data_to_send message is fully sent to the Arduino circuit.
+with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as serial_port:
+    # Send the distance threshold to the Arduino circuit.
+    serial_port.write(str(approached_distance_threshold).encode("utf-8"))
     while True:
         current_time: float = time.process_time()
         delta: float = max(current_time - prev_time, 0)
@@ -338,17 +361,32 @@ with serial.Serial(port_name, baud_rate, timeout=None) as serial_port:
             pass
         except queue.Empty: pass
 
-        # Read data. Block until the entire message is read.
-        # This means that the Arduino board should send data every frame.
+        # Read data.
+        # Reset the latest read message (read_msg).
         read_msg = b''
-        read_msg = serial_port.read(read_msg_length)
+        # Keep reading the data until
+        # all messages sent by the Arduino circuit have been read.
+        # Store the latest full message into read_msg.
+        while True:
+            # Read until partial_msg has a full message, or until we get a timeout.
+            partial_msg += serial_port.read(read_msg_length - len(partial_msg))
+            # If we did not get a full message, do nothing.
+            if len(partial_msg) < read_msg_length:
+                break
+            # Otherwise, set the read_msg to that full message.
+            else:
+                read_msg = partial_msg
+                partial_msg = b''
+                pass
+            pass
+        # Update is_approached flag.
+        update_is_approached()
 
         process(delta)
 
         # Write data, if any.
         if len(data_to_send) > 0:
-            # Write the data and pop it out from the list.
-            data_to_send = data_to_send[serial_port.write(data_to_send):]
+            serial_port.write(data_to_send)
             pass
 
         # Wait for a given amount of time to match
