@@ -95,20 +95,18 @@ class DeviceData:
     pass
 
 
+def get_sound_path(sound: str) -> str:
+    return str(Path(__file__).resolve().parent.parent / "resources" / "sounds" / sound)
 
-profanity_warning_audio_filepaths: list[str] = [
-    "profanity_warning_1.mp3",
-    "profanity_warning_2.mp3",
-    "profanity_warning_3.mp3",
+profanity_audio_filepath:  str = get_sound_path("profanity.mp3")
+politics_audio_filepath:   str = get_sound_path("politics.mp3")
+approached_audio_filepath: str = get_sound_path("approached.mp3")
+punishment_audio_filepath: str = get_sound_path("punishment.mp3")
+warning_audio_filepaths: list[str] = [
+    get_sound_path("warning_1.mp3"),
+    get_sound_path("warning_2.mp3"),
+    get_sound_path("warning_3.mp3"),
 ]
-politics_warning_audio_filepaths: list[str] = [
-    "politics_warning_1.mp3",
-    "politics_warning_2.mp3",
-    "politics_warning_3.mp3",
-]
-approached_audio_filepath: str = "approached.mp3"
-
-punishment_audio_filepath: str = "punishment.mp3"
 
 
 # Global static class wrapper for playing audio from files and stopping them.
@@ -209,17 +207,16 @@ def process_arduino_state_update() -> None:
 def play_warning_audio() -> None:
     # Play audio based on the number of warning strikes recorded.
     DeviceData.audio_request_state = AudioRequestState.AUDIO_PLAYING
-    if DeviceData.has_detected_profanity:
-        DeviceAudioFilePlayer.play(
-            profanity_warning_audio_filepaths[max(DeviceData.warning_strike_count - 1, 0)]
-        )
+    if DeviceData.warning_strike_count == 3:
+        DeviceAudioFilePlayer.play(punishment_audio_filepath)
+        pass
+    elif DeviceData.has_detected_profanity:
+        DeviceAudioFilePlayer.play(profanity_audio_filepath)
         pass
     else:
-        DeviceAudioFilePlayer.play(
-            politics_warning_audio_filepaths[max(DeviceData.warning_strike_count - 1, 0)]
-        )
+        DeviceAudioFilePlayer.play(politics_audio_filepath)
         pass
-    pass
+    
 
 def stop_warning_audio() -> None:
     # Pre-maturely stop the warning audio, if needed.
