@@ -16,6 +16,7 @@ class Transcriber:
         self.events = queue.Queue()
         self._stop = threading.Event()
         self._thread = None
+        self._clear = False
 
     def start(self):
         """Start microphone capture and transcription in a background thread."""
@@ -33,7 +34,6 @@ class Transcriber:
         """Read audio blocks and push ('partial' | 'final', text) onto self.events."""
         recognizer = KaldiRecognizer(self.model, SAMPLERATE)
         audio = queue.Queue()
-        last_partial = ""
 
         def on_audio(indata, frames, time, status):
             """Queue each raw audio block from the sounddevice stream."""
@@ -46,7 +46,13 @@ class Transcriber:
             channels=1,
             callback=on_audio,
         ):
+            last_partial = ""
             while not self._stop.is_set():
+                if self._clear:
+                    recognizer.FinalResult()
+                    last_partial = ""
+                    self._clear = False
+                    continue
                 try:
                     pcm = audio.get(timeout=0.2)
                 except queue.Empty:
@@ -61,3 +67,6 @@ class Transcriber:
                     if text and text != last_partial:
                         last_partial = text
                         self.events.put(("partial", text))
+
+    def clear(self):
+        self._clear = True
