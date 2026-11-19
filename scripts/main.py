@@ -37,7 +37,7 @@ read_msg: bytes = b''
 
 # Store the time in the previous process frame.
 # Used to get elapsed time between frames.
-prev_time: float = time.process_time()
+prev_time: float = time.time()
 
 
 # The amount of time (in seconds) to decay 1 warning level.
@@ -412,10 +412,10 @@ transcriber.start()
 # The loop blocks until the data_to_send message is fully sent to the Arduino circuit.
 with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as serial_port:
     # Send the distance threshold to the Arduino circuit.
-    print(serial_port.write((str(approached_distance_threshold) + '\n').encode("utf-8")))
+    serial_port.write((str(approached_distance_threshold) + '\n').encode("utf-8"))
     print("Connection Established; Distance Threshold Sent.")
     while True:
-        current_time: float = time.process_time()
+        current_time: float = time.time()
         delta: float = max(current_time - prev_time, 0)
         prev_time = current_time
 
