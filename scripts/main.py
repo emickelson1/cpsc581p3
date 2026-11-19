@@ -52,7 +52,7 @@ calming_down_time: float = 10
 
 # The distance (in metres) from the ultrasonic sensor to the nearest object
 # that will prompt the device to transition into the APPROACHED state.
-approached_distance_threshold: float = 0.1
+# approached_distance_threshold: float = 0.1
 
 
 # States for whether or not the warning or pleading audio clips
@@ -275,6 +275,8 @@ def process_warning_state(delta: float) -> None:
         DeviceData.state_timer = 0
 
         play_approached_audio()
+        
+        send_state_change_data()
         return
 
     # No profanity detection or decay while audio is playing.
@@ -374,7 +376,12 @@ def process_approached_state(delta: float) -> None:
     # Keep echoing until the time is up.
     if DeviceData.state_timer >= calming_down_time:
         # Transition back to the previous state.
-        DeviceData.current_state = DeviceData.prev_state
+        if DeviceData.prev_state == DeviceState.PUNISHMENT:
+            DeviceData.current_state = DeviceState.IDLE
+            pass
+        else:
+            DeviceData.current_state = DeviceData.prev_state
+            pass
         DeviceData.prev_state = DeviceState.APPROACHED
         DeviceData.state_timer = 0
         
@@ -412,7 +419,7 @@ transcriber.start()
 # The loop blocks until the data_to_send message is fully sent to the Arduino circuit.
 with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as serial_port:
     # Send the distance threshold to the Arduino circuit.
-    serial_port.write((str(approached_distance_threshold) + '\n').encode("utf-8"))
+    # serial_port.write((str(approached_distance_threshold) + '\n').encode("utf-8"))
     print("Connection Established; Distance Threshold Sent.")
     while True:
         current_time: float = time.time()

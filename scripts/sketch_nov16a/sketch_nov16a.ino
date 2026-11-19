@@ -4,7 +4,10 @@ const int ledPin1 = 8;
 const int ledPin2 = 7;
 const int ledPin3 = 6;
 
-float distanceThreshold = 10.f;
+
+// Minimum distance (in metres) away from the ultrasonic sensor without
+// causing the device to enter the APPROACHED state.
+float distanceThreshold = 20.f;
 
 
 
@@ -24,7 +27,7 @@ float readDistance() {
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
   long duration = pulseIn(echoPin, HIGH);
-  return duration * 0.0343 / 2;
+  return duration * 0.0343 * 0.5;
 }
 
 // 
@@ -39,24 +42,30 @@ int getStage(float d) {
 
 // State change based on which strike we are on
 void onState(int s) {
-  s = s - 3;
-  if (s == 0) {
-    digitalWrite(ledPin1, HIGH);
-    digitalWrite(ledPin2, LOW);
-    digitalWrite(ledPin3, LOW);
-  } else if (s == 1) {
-    digitalWrite(ledPin1, HIGH);
-    digitalWrite(ledPin2, HIGH);
-    digitalWrite(ledPin3, LOW);
-  }else if (s == 2 || s == 1 - 3){
-    digitalWrite(ledPin1, HIGH);
-    digitalWrite(ledPin2, HIGH);
-    digitalWrite(ledPin3, HIGH);
-  }
-  else{
-    digitalWrite(ledPin1, LOW);
-    digitalWrite(ledPin2, LOW);
-    digitalWrite(ledPin3, LOW);
+  switch (s)
+  {
+    case 0:
+      digitalWrite(ledPin1, LOW);
+      digitalWrite(ledPin2, LOW);
+      digitalWrite(ledPin3, LOW);
+      break;
+    case 1:
+    case 2:
+    case 5:
+      digitalWrite(ledPin1, HIGH);
+      digitalWrite(ledPin2, HIGH);
+      digitalWrite(ledPin3, HIGH);
+      break;
+    case 3:
+      digitalWrite(ledPin1, HIGH);
+      digitalWrite(ledPin2, LOW);
+      digitalWrite(ledPin3, LOW);
+      break;
+    case 4:
+      digitalWrite(ledPin1, HIGH);
+      digitalWrite(ledPin2, HIGH);
+      digitalWrite(ledPin3, LOW);
+      break;
   }
 }
 
