@@ -199,9 +199,11 @@ def play_warning_audio() -> None:
     # Play audio based on the number of warning strikes recorded.
     DeviceData.audio_request_state = AudioRequestState.AUDIO_PLAYING
     if DeviceData.has_detected_profanity:
+        print("Profanity Warning Played.")
         DeviceAudioFilePlayer.play(profanity_audio_filepath)
         pass
     else:
+        print("Political Content Warning Played.")
         DeviceAudioFilePlayer.play(politics_audio_filepath)
         pass
     
@@ -239,6 +241,8 @@ def process_state_idle(delta: float) -> None:
         DeviceData.current_state = DeviceState.APPROACHED
         DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
         DeviceData.state_timer = 0
+
+        play_approached_audio()
         
         send_state_change_data()
         return
@@ -250,9 +254,12 @@ def process_state_idle(delta: float) -> None:
         DeviceData.warning_strike_count += 1
         DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
         DeviceData.state_timer = 0
+
+        play_warning_audio()
         
         send_state_change_data()
         return
+    pass
 
 
 def process_warning_state(delta: float) -> None:
@@ -266,17 +273,13 @@ def process_warning_state(delta: float) -> None:
         DeviceData.current_state = DeviceState.APPROACHED
         DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
         DeviceData.state_timer = 0
+
+        play_approached_audio()
         return
 
-    # Play warning audio.
-    match DeviceData.audio_request_state:
-        case AudioRequestState.AUDIO_REQUESTED:
-            play_warning_audio()
-            # No profanity detection or decay while audio is playing.
-            return
-        case AudioRequestState.AUDIO_PLAYING:
-            # No profanity detection or decay while audio is playing.
-            return
+    # No profanity detection or decay while audio is playing.
+    if DeviceData.audio_request_state == AudioRequestState.AUDIO_PLAYING:
+        return
 
     if DeviceData.has_detected_profanity or DeviceData.has_detected_politics:
         # Increase strike count and reset decay timer.
@@ -290,10 +293,13 @@ def process_warning_state(delta: float) -> None:
             DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
             # Reset strike count.
             DeviceData.warning_strike_count = 0
+
+            play_punishment_audio()
             pass
         else:
             # Request audio for the next warning.
             DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
+            play_warning_audio()
             pass
 
         send_state_change_data()
@@ -325,18 +331,15 @@ def process_punishment_state(delta: float) -> None:
         DeviceData.current_state = DeviceState.APPROACHED
         DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
         DeviceData.state_timer = 0
+
+        play_approached_audio()
         
         send_state_change_data()
         return
 
-    match DeviceData.audio_request_state:
-        case AudioRequestState.AUDIO_REQUESTED:
-            play_punishment_audio()
-            # No profanity detection or decay while audio is playing.
-            return
-        case AudioRequestState.AUDIO_PLAYING:
-            # No profanity detection or decay while audio is playing.
-            return
+    # No profanity detection or decay while audio is playing.
+    if DeviceData.audio_request_state == AudioRequestState.AUDIO_PLAYING:
+        return
 
     # Transition to the IDLE state.
     # If the device got interrupted, transition back to the IDLE state
@@ -344,18 +347,15 @@ def process_punishment_state(delta: float) -> None:
     DeviceData.prev_state = DeviceState.PUNISHMENT
     DeviceData.current_state = DeviceState.IDLE
     DeviceData.state_timer = 0
+
+    send_state_change_data()
     pass
 
 
 def process_approached_state(delta: float) -> None:
-    match DeviceData.audio_request_state:
-        case AudioRequestState.AUDIO_REQUESTED:
-            play_approached_audio()
-            # No calming down while audio is playing.
-            return
-        case AudioRequestState.AUDIO_PLAYING:
-            # No calming down while audio is playing.
-            return
+    # No calming down while audio is playing.
+    if DeviceData.audio_request_state == AudioRequestState.AUDIO_PLAYING:
+        return
 
     if DeviceData.is_approached:
         # If the device was approached again
@@ -364,6 +364,8 @@ def process_approached_state(delta: float) -> None:
             # Play the audio again and restart the calming down timer.
             DeviceData.audio_request_state = AudioRequestState.AUDIO_REQUESTED
             DeviceData.state_timer = 0
+
+            play_approached_audio()
             send_state_change_data()
             pass
         # Otherwise, simply do nothing and wait until it is left alone.
@@ -410,7 +412,7 @@ transcriber.start()
 # The loop blocks until the data_to_send message is fully sent to the Arduino circuit.
 with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as serial_port:
     # Send the distance threshold to the Arduino circuit.
-    serial_port.write((str(approached_distance_threshold) + '\n').encode("utf-8"))
+    print(serial_port.write((str(approached_distance_threshold) + '\n').encode("utf-8")))
     print("Connection Established; Distance Threshold Sent.")
     while True:
         current_time: float = time.process_time()
@@ -425,17 +427,19 @@ with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as seria
         try:
             # Get a single line from the transcriber.
             kind, text = transcriber.events.get_nowait()
-            if kind == 'partial': pass      # wait for complete sentence
 
             # Only do processing on the text if the device is not paused.
-            elif not DeviceData.is_paused:
+            # Wait for a complete sentence.
+            if not DeviceData.is_paused:# and kind != 'partial':
                 # Run the profanity/political filter on it.
                 filtered, reason = filter(text)
                 if filtered and reason == "profanity":
                     DeviceData.has_detected_profanity = True
+                    print("Profanity Detected.")
                     pass
-                if filtered and reason == "politics":
+                if filtered and reason == "political":
                     DeviceData.has_detected_politics = True
+                    print("Polictical Content Detected.")
                     pass
                 pass
             pass
@@ -469,6 +473,7 @@ with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as seria
             process_arduino_state_update()
             pass
 
+        data_to_send = b''
         if not DeviceData.is_paused:
             process(delta)
             pass
