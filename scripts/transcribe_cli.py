@@ -17,18 +17,31 @@ print("Listening... (say \"Stop\" to end)")
 try:
     while True:
         kind, text = transcriber.events.get()
+        # if kind == "final": continue
+        # print_in_place(text)
+        # f, r = profanity_filter.filter(text)
+        # if f:
+        #     print("Flagged. Clearing partial")
+        #     transcriber.clear()
+        
+        filtered, reason = profanity_filter.filter(text)
         if kind == "partial":
-            print_in_place(f"[ ... ] {text}")
+            if not filtered:
+                print_in_place(f"[ ... ] {text}")
+            else:
+                print_in_place(f"[final] {text} (FILTERED! Reason: {reason})\n")
+                transcriber.clear()
+                
         if kind == "final":
-            # Filter and print
-            filtered, reason = profanity_filter.filter(text)
-            if not filtered: print_in_place(f"[final] {text}\n")
-            else:            print_in_place(f"[final] {text} (FILTERED! Reason: {reason})\n")
+            if not filtered: 
+                print_in_place(f"[final] {text}\n")
+            else:
+                print_in_place(f"[final] {text} (FILTERED! Reason: {reason})\n")
             
-            # Stop if the user says "stop"
-            if text == "stop":
-                print("Stopping...")
-                transcriber.stop()
-                break
+        # Stop if the user says "stop"
+        if text == "stop":
+            print("\nStopping...")
+            transcriber.stop()
+            break
 except KeyboardInterrupt:
     transcriber.stop()

@@ -430,17 +430,19 @@ with serial.Serial(port_name, baud_rate, timeout=0, write_timeout=None) as seria
 
             # Only do processing on the text if the device is not paused.
             # Wait for a complete sentence.
-            if not DeviceData.is_paused:# and kind != 'partial':
+            if not DeviceData.is_paused and kind == "partial":
                 # Run the profanity/political filter on it.
                 filtered, reason = filter(text)
-                if filtered and reason == "profanity":
-                    DeviceData.has_detected_profanity = True
-                    print("Profanity Detected.")
-                    pass
-                if filtered and reason == "political":
-                    DeviceData.has_detected_politics = True
-                    print("Polictical Content Detected.")
-                    pass
+                if filtered:
+                    transcriber.clear()
+                    if reason == "profanity":
+                        DeviceData.has_detected_profanity = True
+                        print("Profanity Detected.")
+                        pass
+                    else:
+                        DeviceData.has_detected_politics = True
+                        print("Political Content Detected.")
+                        pass
                 pass
             pass
         except queue.Empty: pass
