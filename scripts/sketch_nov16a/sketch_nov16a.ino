@@ -4,7 +4,7 @@ const int ledPin1 = 8;
 const int ledPin2 = 7;
 const int ledPin3 = 6;
 
-float distanceThreshold = -1.f;
+float distanceThreshold = 10.f;
 
 
 
@@ -24,7 +24,6 @@ float readDistance() {
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
   long duration = pulseIn(echoPin, HIGH);
-  if (duration == 0) return -1;
   return duration * 0.0343 / 2;
 }
 
@@ -63,17 +62,8 @@ void onState(int s) {
 
 
 void loop() {
-  if (distanceThreshold < 0.f)
-  {
-    if (Serial.available())
-    {
-      distanceThreshold = Serial.readStringUntil('\n').toFloat();
-    }
-    //else return;
-  }
-
   float d = readDistance();
-  if (d >= 0 && d < distanceThreshold){
+  if (d > 0 && d < distanceThreshold){
     Serial.write(1);// close/below threshold
   } else{
     Serial.write(0); // nothing, can have more 
