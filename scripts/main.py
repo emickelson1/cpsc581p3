@@ -47,7 +47,7 @@ warning_decay_time: float = 10
 max_strike_count: int = 3
 
 # The amount of time (in seconds) to calm down after being approached.
-calming_down_time: float = 10
+calming_down_time: float = 0.0
 
 
 # The distance (in metres) from the ultrasonic sensor to the nearest object

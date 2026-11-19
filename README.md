@@ -1,6 +1,6 @@
 # CPSC581 Project 3
 
-Thanksgiving Moderator is a simple device that is intended to provide a simple solution to distracting political talk during family dinners.
+Talk-E (also called Thanksgiving Moderator) is a simple device that is intended to provide a simple solution to distracting political talk during family dinners.
 
 It listens to your conversations, watching for political speak or profanity. If the conversation goes in that direction, it respectfully redirects the discussion
 through various modalities of output.
@@ -19,12 +19,21 @@ In our demo implementation, we handle processing, recording, and playback throug
 
 > python -m venv .venv
 
-> .\\.venv\Scripts\activate
+> .venv\Scripts\activate
 
 > pip install -r requirements.txt
 
 ### Connect Arduino
-...
+
+1. Connect Talk-E via USB
+2. Get the serial port that Talk-E is connected through
+
+> \[System.IO.Ports.SerialPort\]::GetPortNames()
+
+3. Run the main script, using the serial port given in (2)
+
+> python scripts/main.py
+
 
 ### Run
 
